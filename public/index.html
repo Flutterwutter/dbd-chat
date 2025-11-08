@@ -10,37 +10,71 @@
         </style>
     </head>
     <body>
-        <h2> 🧙‍♂ D&D Group Chat </h2>
-        <div id="chat"></div>
-        <div id="input">
-            <input id="msg" placeholder="Type a message..." />
-            <button>Send</button>
+        <h2>🧙‍♂️ D&D Group Chat</h2>
+
+        <!-- Room selector (already added earlier) -->
+        <label for="room">Choose a room:</label>
+        <select id="room">
+            <option value="Tavern">Tavern</option>
+            <option value="Dungeon">Dungeon</option>
+            <option value="Marketplace">Marketplace</option>
+        </select>
+
+        <!-- NEW: two-column layout -->
+        <div style="display:grid; grid-template-columns: 240px 1fr; gap:12px; height:70vh;">
+            <!-- LEFT: online users -->
+            <div id="usersPanel" style="border:1px solid #333; padding:10px; overflow:auto;">
+                <h3 style="margin-top:0;">Online</h3>
+                <div id="users"></div>
+            </div>
+
+            <!-- RIGHT: chat area -->
+            <div style="display:flex; flex-direction:column;">
+                <div id="chat" style="flex:1; overflow-y:auto; border:1px solid #333; padding:10px;"></div>
+                <div id="input" style="display:flex; gap:10px; margin-top:10px;">
+                    <input id="msg" placeholder="Type a message..." style="flex:1;" />
+                    <button>Send</button>
+                </div>
+            </div>
         </div>
         <script src="/socket.io/socket.io.js"></script>
         <script>
+            // ---- prompts & DOM refs ----
             const password = prompt("Enter chat password:");
             if (!password) {
                 alert("Password required!");
                 throw new Error("No password entered");
             }
 
-            const socket = io({ auth: { password } });
-
-            socket.on("connect_error", (err) => {
-                if (err.message === "invalid password") {
-                    alert("❌ Wrong password! Access denied.");
-                    window.location.reload();
-                }
-            });
-
             const name = prompt("Enter your name:") || "Adventurer";
+            // (Optional) store avatar URL for later; can be empty
+            const avatar = prompt("Enter an avatar image URL (optional):") || "";
+
+            const roomSelect = document.getElementById("room");
             const chat = document.getElementById("chat");
             const msg = document.getElementById("msg");
             const btn = document.querySelector("button");
+            const usersDiv = document.getElementById("users");
 
-            function add(text) {
+            // ---- connect socket with password ----
+            const socket = io({ auth: { password } });
+
+            // ---- register self on connect and join selected room ----
+            socket.on("connect", () => {
+                socket.emit("register", { name, avatar });
+                socket.emit("joinRoom", roomSelect.value);
+            });
+
+            // ---- allow switching rooms live ----
+            roomSelect.addEventListener("change", () => {
+                socket.emit("joinRoom", roomSelect.value);
+                chat.innerHTML = ""; // clear chat when switching
+            });
+
+            // ---- render helpers ----
+            function addChatLine(html) {
                 const div = document.createElement("div");
-                div.textContent = text;
+                div.innerHTML = html;
                 chat.appendChild(div);
                 chat.scrollTop = chat.scrollHeight;
             }
@@ -48,18 +82,45 @@
             function sendMessage() {
                 const text = msg.value.trim();
                 if (!text) return;
-                socket.emit("chat", `${name}: ${text}`);
+                socket.emit("chat", { name, avatar, text });
                 msg.value = "";
             }
 
-            socket.on("chat", add);
+            // ---- incoming events ----
+            socket.on("system", (text) => {
+                addChatLine(`<em>${text}</em>`);
+            });
 
+            socket.on("chat", (data) => {
+                const img = data.avatar ? `<img src="${data.avatar}" width="20" height="20" style="border-radius:50%;vertical-align:middle;margin-right:6px;">` : "";
+                addChatLine(`${img}<strong>${data.name}</strong>: ${data.text}`);
+            });
+
+            // >>> NEW: the live users list <<<
+            socket.on("users", (list) => {
+                // list is array of { name, avatar, room }
+                usersDiv.innerHTML = list
+                    .map(u => {
+                        const img = u.avatar ? `<img src="${u.avatar}" width="20" height="20" style="border-radius:50%;vertical-align:middle;margin-right:6px;">` : `<span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:#666;margin-right:6px;"></span>`;
+                        return `<div style="margin:6px 0;">${img}${u.name}</div>`;
+                    })
+                    .join("");
+            });
+
+            // ---- send triggers ----
             btn.onclick = sendMessage;
-
             msg.addEventListener("keydown", (e) => {
                 if (e.key === "Enter") {
                     e.preventDefault();
                     sendMessage();
+                }
+            });
+
+            // Optional: show connection errors (wrong password, etc.)
+            socket.on("connect_error", (err) => {
+                if (err.message === "invalid password") {
+                    alert("❌ Wrong password! Access denied.");
+                    location.reload();
                 }
             });
         </script>
