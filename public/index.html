@@ -37,18 +37,17 @@
                 </div>
             </div>
         </div>
-        <script src="/socket.io/socket.io.js"></script>
+            <script src="/socket.io/socket.io.js"></script>
         <script>
-            // ---- prompts & DOM refs ----
-            //const password = prompt("Enter chat password:");
-            //if (!password) {
-             //   alert("Password required!");
-              //  throw new Error("No password entered");
-            //}
+            const password = prompt("Enter chat password:");
+            if (!password) {
+                alert("Password required!");
+            throw new Error("No password entered");
+      }
 
             const name = prompt("Enter your name:") || "Adventurer";
-            // (Optional) store avatar URL for later; can be empty
             const avatar = prompt("Enter an avatar image URL (optional):") || "";
+            const socket = io({auth: {password} });
 
             const roomSelect = document.getElementById("room");
             const chat = document.getElementById("chat");
@@ -56,73 +55,68 @@
             const btn = document.querySelector("button");
             const usersDiv = document.getElementById("users");
 
-            // ---- connect socket with password ----
-            const socket = io({ auth: { password } });
+      socket.on("connect", () => {
+                socket.emit("register", { name, avatar, text });
+            socket.emit("joinRoom", roomSelect.value);
+      });
 
-            // ---- register self on connect and join selected room ----
-            socket.on("connect", () => {
-                socket.emit("register", { name, avatar });
+      roomSelect.addEventListener("change", () => {
                 socket.emit("joinRoom", roomSelect.value);
-            });
+            chat.innerHTML = "";
+      });
 
-            // ---- allow switching rooms live ----
-            roomSelect.addEventListener("change", () => {
-                socket.emit("joinRoom", roomSelect.value);
-                chat.innerHTML = ""; // clear chat when switching
-            });
+            // ✅ sendMessage actually emits to the server
+            function sendMessage() {
+        const text = msg.value.trim();
+            if (!text) return;
+            socket.emit("chat", {name, avatar, text});
+            msg.value = "";
+      }
 
-            // ---- render helpers ----
-            function addChatLine(html) {
+            // ✅ bind both click and Enter
+            btn.onclick = sendMessage;
+      msg.addEventListener("keydown", (e) => {
+        if (e.key === "Enter") {
+                e.preventDefault();
+            sendMessage();
+        }
+      });
+
+      // ✅ display messages from the server
+      socket.on("chat", (data) => {
+        const img = data.avatar
+            ? `<img src="${data.avatar}" width="20" height="20" style="border-radius:50%;vertical-align:middle;margin-right:6px;">`
+                : "";
                 const div = document.createElement("div");
-                div.innerHTML = html;
+                div.innerHTML = `${img}<strong>${data.name}</strong>: ${data.text}`;
                 chat.appendChild(div);
                 chat.scrollTop = chat.scrollHeight;
-            }
+      });
 
-            function sendMessage() {
-                const text = msg.value.trim();
-                if (!text) return;
-                socket.emit("chat", { name, avatar, text });
-                msg.value = "";
-            }
+      // system + users updates (optional)
+      socket.on("system", (text) => {
+        const div = document.createElement("div");
+                div.innerHTML = `<em>${text}</em>`;
+                chat.appendChild(div);
+      });
 
-            // ---- incoming events ----
-            socket.on("system", (text) => {
-                addChatLine(`<em>${text}</em>`);
-            });
+      socket.on("users", (list) => {
+                    usersDiv.innerHTML = list
+                        .map(u => {
+                            const img = u.avatar
+                                ? `<img src="${u.avatar}" width="20" height="20" style="border-radius:50%;vertical-align:middle;margin-right:6px;">`
+                                : `<span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:#666;margin-right:6px;"></span>`;
+                            return `<div style="margin:6px 0;">${img}${u.name}</div>`;
+                        })
+                        .join("");
+      });
 
-            socket.on("chat", (data) => {
-                const img = data.avatar ? `<img src="${data.avatar}" width="20" height="20" style="border-radius:50%;vertical-align:middle;margin-right:6px;">` : "";
-                addChatLine(`${img}<strong>${data.name}</strong>: ${data.text}`);
-            });
-
-            // >>> NEW: the live users list <<<
-            socket.on("users", (list) => {
-                // list is array of { name, avatar, room }
-                usersDiv.innerHTML = list
-                    .map(u => {
-                        const img = u.avatar ? `<img src="${u.avatar}" width="20" height="20" style="border-radius:50%;vertical-align:middle;margin-right:6px;">` : `<span style="display:inline-block;width:20px;height:20px;border-radius:50%;background:#666;margin-right:6px;"></span>`;
-                        return `<div style="margin:6px 0;">${img}${u.name}</div>`;
-                    })
-                    .join("");
-            });
-
-            // ---- send triggers ----
-            btn.onclick = sendMessage;
-            msg.addEventListener("keydown", (e) => {
-                if (e.key === "Enter") {
-                    e.preventDefault();
-                    sendMessage();
-                }
-            });
-
-            // Optional: show connection errors (wrong password, etc.)
-            socket.on("connect_error", (err) => {
-                if (err.message === "invalid password") {
+      socket.on("connect_error", (err) => {
+        if (err.message === "invalid password") {
                     alert("❌ Wrong password! Access denied.");
-                    location.reload();
-                }
-            });
+                location.reload();
+        }
+      });
         </script>
     </body>
 </html>

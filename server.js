@@ -34,7 +34,7 @@ io.on("connection", (socket) => {
     let currentRoom = null;
 
     // client calls this first after connect
-    socket.on("register", ({ name, avatar }) => {
+    socket.on("register", ({ name, avatar, text }) => {
         if (!name) name = "Adventurer";
         users[socket.id] = { name, avatar: avatar || "", room: null };
     });
@@ -61,9 +61,9 @@ io.on("connection", (socket) => {
     });
 
     // chat messages go only to current room
-    socket.on("chat", (payload) => {
+    socket.on("chat", (data) => {
         if (!currentRoom) return;
-        io.to(currentRoom).emit("chat", payload);
+        io.to(currentRoom).emit("chat", data);
     });
 
     socket.on("disconnect", () => {
